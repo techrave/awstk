@@ -4,17 +4,24 @@ Usage: s3scan.py [options] <Bucket> <Path> <FilePattern> <TextPattern>
 """
 
 import argparse
-import boto3
 import concurrent.futures
 import json
 import re
 import threading
-import urllib.parse
+import boto3
 
 
 S3DELIM = '/'
 
-class S3Scanner:
+class S3Scanner: # pylint: disable=too-few-public-methods
+    """
+    Search S3 Buckets with Regex
+
+    Methods
+    -------
+    scan()
+        Performs the S3 scan
+    """
     def __init__(self, bucket):
         self._bucket = bucket
         self._s3client = boto3.client('s3')
@@ -23,12 +30,26 @@ class S3Scanner:
         self._lock = threading.Lock()
 
     def scan(self, path, fileregex, contentregex):
+        """
+        Perform the scan of the bucket
+
+        Parameters
+        ----------
+        path : str
+            File path in S3 bucket to start the file search
+        fileregex : str
+            Regular expression describing files that should be scanned
+        contentregex : str
+            Regular expression describing content in files that should be
+            returned
+
+        """
         files = self._find_files(path, fileregex)
         self._scan_files(files, contentregex)
         return self._result
 
-
-    def _get_s3_filename(self, fullname):
+    @staticmethod
+    def _get_s3_filename(fullname):
         """
         Get filename portion of S3 path
 
@@ -36,7 +57,7 @@ class S3Scanner:
         ----------
         fullname : str
             full key of S3 object
-        
+
         Returns
         -------
         str
@@ -57,6 +78,11 @@ class S3Scanner:
             The S3 directory to search.
         regex : str
             Regular Expression to check against file names
+
+        Returns
+        -------
+        dict
+            Dictionary of S3 file names with lists of relevant content found
         """
         # Handle missing / at end of prefix
         if not path.endswith(S3DELIM):
@@ -69,7 +95,7 @@ class S3Scanner:
             for key in result['Contents']:
                 key['Filename'] = self._get_s3_filename(key['Key'])
                 match = pattern.match(key['Filename'])
-                if(not match):
+                if not match:
                     continue
                 retval.append(key)
         return retval
@@ -85,7 +111,7 @@ class S3Scanner:
             match = pattern.match(line)
             if match:
                 lines.append(line)
-        retval = { 'File': file, 'Lines': lines }
+        retval = {'File': file, 'Lines': lines}
         with self._lock:
             self._result.append(retval)
 
@@ -105,21 +131,37 @@ class S3Scanner:
                 executor.submit(self._scan_file, file, regex)
 
 def get_args():
+    """
+    Parse command line arguments
+
+    Returns
+    -------
+    args
+
+    """
     parser = argparse.ArgumentParser(prog="s3scan.py")
     parser.add_argument("bucket", type=str,
-            help="S3 Bucket to scan")
+                        help="S3 Bucket to scan")
     parser.add_argument("path", type=str,
-            help="Directory path in S3 bucket")
+                        help="Directory path in S3 bucket")
     parser.add_argument("filepattern", type=str,
-            help="Regex to identify files to scan")
+                        help="Regex to identify files to scan")
     parser.add_argument("textpattern", type=str,
-            help="Regex to match file content")
+                        help="Regex to match file content")
     parser.add_argument("-l", "--dolambda", action="store_true",
-            help="Invoke \"s3scan\" lambda function to perform the scan")
+                        help="Invoke \"s3scan\" lambda function to perform the scan")
     args = parser.parse_args()
     return args
 
 def report(result):
+    """
+    Output search results
+
+    Parameters
+    ----------
+    results : dict
+        Scan result from S3Scanner.scan
+    """
     for file in result:
         if len(file['Lines']) < 1:
             continue
@@ -131,7 +173,7 @@ def lambda_invoke(event):
     json_event = json.dumps(event)
     bytes_event = bytes(json_event, 'utf-8')
     client = boto3.client('lambda')
-    result = client.invoke( FunctionName="s3scan", Payload=bytes_event )
+    result = client.invoke(FunctionName="s3scan", Payload=bytes_event)
     if result['StatusCode'] != 200:
         raise RuntimeError()
 
@@ -163,19 +205,19 @@ def main():
 
 def lambda_prepare_result(result):
     for record in result:
-        f = record['File']
-        f['LastModified'] = str(f['LastModified'])
+        s3_file = record['File']
+        s3_file['LastModified'] = str(s3_file['LastModified'])
     return result
 
-def lambda_handler(event, context):
+def lambda_handler(event, context): # pylint: disable=unused-argument
     bucket = event['Bucket']
     scanner = S3Scanner(bucket)
 
     path = event['Path']
-    filePattern = event['FilePattern']
-    textPattern = event['TextPattern']
+    file_pattern = event['FilePattern']
+    text_pattern = event['TextPattern']
 
-    matches = scanner.scan(path, filePattern, textPattern)
+    matches = scanner.scan(path, file_pattern, text_pattern)
 
     return lambda_prepare_result(matches)
 

@@ -102,7 +102,7 @@ class S3Scanner: # pylint: disable=too-few-public-methods
 
     def _scan_file(self, file, regex):
         pattern = re.compile(regex)
-        fobj = self._s3resource.Object(self._bucket, file['Key'])
+        fobj = self._s3resource.Object(self._bucket, file['Key']) # pylint: disable=no-member
         body = fobj.get()['Body']
         lines = []
         iterator = body.iter_lines(chunk_size=1024)
@@ -170,6 +170,14 @@ def report(result):
             print(f"  {line}")
 
 def lambda_invoke(event):
+    """
+    Invokes s3scan lambda function in AWS
+
+    Parameters
+    ----------
+    event : dict
+        Query parameters to pass to lambda
+    """
     json_event = json.dumps(event)
     bytes_event = bytes(json_event, 'utf-8')
     client = boto3.client('lambda')
@@ -185,7 +193,9 @@ def lambda_invoke(event):
 
 
 def main():
-
+    """
+    Invocation method when launching from shell
+    """
     args = get_args()
     event = {}
     event['Bucket'] = args.bucket
@@ -204,12 +214,24 @@ def main():
 
 
 def lambda_prepare_result(result):
+    """
+    Massage result data to support serialization as JSON
+
+    Parameters
+    ----------
+    result : dict
+        Result from S3Scanner.scan
+
+    """
     for record in result:
         s3_file = record['File']
         s3_file['LastModified'] = str(s3_file['LastModified'])
     return result
 
 def lambda_handler(event, context): # pylint: disable=unused-argument
+    """
+    Invocation handler when launched in AWS Lambda
+    """
     bucket = event['Bucket']
     scanner = S3Scanner(bucket)
 

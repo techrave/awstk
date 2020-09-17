@@ -13,7 +13,7 @@ import boto3
 
 S3DELIM = '/'
 
-class S3Scanner: # pylint: disable=too-few-public-methods
+class S3Scanner:
     """
     Search S3 Buckets with Regex
 
